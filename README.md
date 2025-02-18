@@ -30,6 +30,7 @@
 
 - **UR3:** De robot moet in staat zijn om een variabel doolhof op te lossen.
     - Doolhof met een knikker als simulatie-element.
+    - Robot moet voldoende kunnen kantelen om knikker te laten bewegen.
     - Camera om de lay-out van het doolhof te visualiseren.
     - Camera om de locatie van de knikker te bepalen.
     - Software voor muurherkenning.
