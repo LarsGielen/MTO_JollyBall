@@ -40,3 +40,28 @@
 
 - **UR4:** De robot moet obstakels kunnen detecteren en vermijden (collision detection).
     - 2D Lidar voor omgevingsdetectie.
+
+### Componentenlijst
+#### **1. Mechanische componenten**
+
+- **Omni-wielen (3x)** – Voor 360° beweging en balans
+- **DC-motoren (3x)** – Aandrijving van de omni-wielen
+- **Motor drivers (3x)** – Aansturing van de DC-motoren
+- **Frame** – Gebalanceerd en stevig, geschikt voor montage van alle componenten
+- **Bal (voetbalgrootte, stevige grip)** – Ondergrond voor de robot
+
+#### **2. Elektronische componenten**
+
+- **Arduino (1x)** – Hoofdcontroller voor motorsturing en balansregeling
+- **IMU (Inertial Measurement Unit) (1x)** – Voor balansdetectie (incl. gyroscoop en versnellingsmeter)
+- **Encoders of stroommeting op motoren (optioneel)** – Voor positiedetectie en zelfcorrectie
+- **Interne batterij (1x)** – Draadloze voeding voor de robot
+- **Bekabeling en connectoren** – Voor de verbinding van alle elektronische componenten
+- **Raspberry Pi (1x)** – Voor serverfunctionaliteit en geavanceerde verwerking
+- **Wi-Fi-module (ingebouwd in Raspberry Pi)** – Voor draadloze communicatie
+- **Softwarematige webinterface** – Voor smartphonebesturing
+
+#### **3. Sensoren en beeldverwerking**
+
+- **2D Lidar (1x)** – Voor obstakeldetectie en navigatie
+- **Camera (1x)** – Voor doolhofvisualisatie en knikkertracking
