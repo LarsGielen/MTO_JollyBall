@@ -1,0 +1,2 @@
+- Stepper motors: NEMA23, >1Nm Koppel
+- Omni wheels: DIY print + O-ringen?
