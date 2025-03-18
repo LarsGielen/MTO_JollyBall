@@ -14,7 +14,7 @@
     - Alle verwerking gebeurt intern via een Arduino.
 
 - **R3:** De robot moet minimaal 15 minuten continu kunnen functioneren zonder fouten.
-
+ 
 ---
 
 ### **Uitbreidingen (UR)**
