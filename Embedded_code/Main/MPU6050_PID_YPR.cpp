@@ -32,9 +32,9 @@ int16_t gx, gy, gz;
 int16_t accelOffsets[3] = {0, 0, 0};  // [x, y, z]
 int16_t gyroOffsets[3] = {0, 0, 0};   // [x, y, z]
 
-            static float filteredYaw = 0;
-            static float filteredPitch = 0;
-            static float filteredRoll = 0;
+static float filteredYaw = 0;
+static float filteredPitch = 0;
+static float filteredRoll = 0;
 const float alpha = 0.05; // Low alpha value for stronger smoothing
 std::array<float,3> results;
 
