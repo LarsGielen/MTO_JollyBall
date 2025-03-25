@@ -27,7 +27,7 @@ void loop() {
   const float speedPercent = 1.0f; 
   const float rotationSpeed = 0.001f;
 
-  float moveDirection[2] = {cos(theta), sin(theta)};
+  float moveDirection[2] = {1, 0};
   move(moveDirection, speedPercent);
 
   theta += rotationSpeed;
