@@ -4,11 +4,11 @@ float lastWheelVel[3] = {0, 0, 0};
 
 float wheelDelay(float percentSpeed) {
   const float MIN_DELAY = 100;   // Minimum step delay (fastest speed)
-  const float MAX_DELAY = 5000; // Maximum step delay (slowest speed)
+  const float MAX_DELAY = 1e25; // Maximum step delay (slowest speed)
 
   percentSpeed = constrain(percentSpeed, 0.0f, 1.0f);
 
-  return MAX_DELAY - (MAX_DELAY - MIN_DELAY) * percentSpeed;
+  return MIN_DELAY + (MAX_DELAY - MIN_DELAY) * (1-percentSpeed);
 }
 
 void direction2wheelVelocity(const float moveDirection[2], float wheelVel[3]) {
@@ -30,7 +30,7 @@ void direction2wheelVelocity(const float moveDirection[2], float wheelVel[3]) {
   } 
   else {
     for (int i = 0; i < 3; i++) 
-      wheelVel[i] = raw[i]; // / maxVal;
+      wheelVel[i] = raw[i] / maxVal;
   }
 }
 
