@@ -10,12 +10,12 @@ extern const int MICROSTEP;
 extern const float MOTOR_STEP_ANGLE;
 extern const float WHEEL_SIZE; // in millimeters
 extern const float STEP_SIZE;
-
 extern long motor_timers[];
+
 extern bool motor_flags[];
 
 // Returns the delay (in milliseconds) per step for a given wheel speed (in m/s).
-float wheelDelay(float wheelSpeed);
+int wheelDelay(float wheelSpeed);
 
 // Convert a desired movement vector (x, y) into wheel velocities.
 // The wheel arrangement is assumed to be at 0°, 120°, and 240°.

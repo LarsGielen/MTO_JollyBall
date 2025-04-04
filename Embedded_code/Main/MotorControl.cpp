@@ -2,13 +2,13 @@
 
 float lastWheelVel[3] = {0, 0, 0};
 
-float wheelDelay(float percentSpeed) {
-  const float MIN_DELAY = 100;   // Minimum step delay (fastest speed)
-  const float MAX_DELAY = 1e25; // Maximum step delay (slowest speed)
+int wheelDelay(float percentSpeed) {
+  const int MIN_DELAY = 2000;   // Minimum step delay (fastest speed)
+  const int MAX_DELAY = 7500; // Maximum step delay (slowest speed)
 
   percentSpeed = constrain(percentSpeed, 0.0f, 1.0f);
-
-  return MIN_DELAY + (MAX_DELAY - MIN_DELAY) * (1-percentSpeed);
+  //Serial.println(MIN_DELAY + (MAX_DELAY - MIN_DELAY) * (1.0f-percentSpeed));
+  return MIN_DELAY + (MAX_DELAY - MIN_DELAY) * (1.0f-percentSpeed);
 }
 
 void direction2wheelVelocity(const float moveDirection[2], float wheelVel[3]) {
@@ -34,11 +34,9 @@ void direction2wheelVelocity(const float moveDirection[2], float wheelVel[3]) {
   }
 }
 
-void rotateWheel(float speed, bool dir, int wheelIndex) {
-  if (speed <= 1e-6)
-    return;
-
-  float delayVal = wheelDelay(speed);
+void rotateWheel(float motorspeed, bool dir, int wheelIndex) {
+  if(motorspeed <= 0.0f) return;
+  float delayVal = wheelDelay(motorspeed);
   
   if (micros() - motor_timers[wheelIndex] >= (delayVal / 2.0f)) {
     digitalWrite(MOTOR_DIR_PINS[wheelIndex], dir);
@@ -59,6 +57,8 @@ void move(const float moveDirection[2], float speedPercent) {
     rotateWheel(speed, dir, i);
   }
 }
+
+
 
 void printMotorState() {
   Serial.println("Motor Status:");
