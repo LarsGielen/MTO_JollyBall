@@ -61,7 +61,7 @@ void calibrateSensorOffsets();
 void finetuneOffsets();
 void calibrateYPR();
 void setup_MPU6050();
-std::array<float,3> readout_MPU6050();
+void verifySensorCalibration();
 
 volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin has gone high
 void dmpDataReady() {
@@ -78,7 +78,7 @@ void setup_MPU6050() {
     Wire.setClock(400000); // 400kHz I2C clock
     
     // initialize serial communication
-    Serial.begin(115200);
+    Serial.begin(9600);
     while (!Serial); // wait for Leonardo/Micro/Pro Micro
     
     // initialize device
@@ -173,10 +173,10 @@ void configureDLPF() {
     
     // Configure additional settings
     // Full-scale range: ±250°/s gives maximum sensitivity
-    mpu.setFullScaleGyroRange(MPU6050_GYRO_FS_250);
+    mpu.setFullScaleGyroRange(MPU6050_GYRO_FS_250);//MPU6050_GYRO_FS_250
     
     // Full-scale range: ±2g gives maximum sensitivity
-    mpu.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
+    mpu.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);//MPU6050_ACCEL_FS_2
     
     Serial.println(F("DLPF configured for maximum stability:"));
     Serial.println(F("- DLPF Bandwidth: 5 Hz"));
@@ -185,70 +185,51 @@ void configureDLPF() {
     Serial.println(F("- Accel Range: ±2g"));
 }
 
-// ================================================================
-// ===              LOW-LEVEL REGISTER WRITE FUNCTION           ===
-// ================================================================
-
-
-// ================================================================
-// ===                    MAIN PROGRAM LOOP                     ===
-// ================================================================
-void readout_MPU6050(float* ypr){
+bool readout_MPU6050(float* ypr){
   // if programming failed, don't try to do anything
-    if (!dmpReady) return;
-
-    // wait for MPU interrupt or extra packet(s) available
-    while (!mpuInterrupt && fifoCount < packetSize) {
-        // other program behavior stuff here
-        // if you are really paranoid you can frequently test in between other
-        // stuff to see if mpuInterrupt is true, and if so, "break;" from the
-        // while() loop to immediately process the MPU data
-    }
-
-    // reset interrupt flag and get INT_STATUS byte
-    mpuInterrupt = false;
-    mpuIntStatus = mpu.getIntStatus();
-
-    // get current FIFO count
-    fifoCount = mpu.getFIFOCount();
-
-    // check for overflow (this should never happen unless our code is too inefficient)
-    if ((mpuIntStatus & 0x10) || fifoCount == 1024) {
-        // reset so we can continue cleanly
-        mpu.resetFIFO();
-        Serial.println(F("FIFO overflow!"));
-
-    // otherwise, check for DMP data ready interrupt (this should happen frequently)
-    } else if (mpuIntStatus & 0x02) {
-        // wait for correct available data length, should be a VERY short wait
-        while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
-
-        // read a packet from FIFO
-        mpu.getFIFOBytes(fifoBuffer, packetSize);
-        
-        // track FIFO count here in case there is > 1 packet available
-        // (this lets us immediately read more without waiting for an interrupt)
-        fifoCount -= packetSize;
-
-        // display Euler angles in degrees
-        mpu.dmpGetQuaternion(&q, fifoBuffer);
-        mpu.dmpGetGravity(&gravity, &q);
-        mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-
-        if (!calibrated) {
-            calibrateYPR();
-        } else {
-            // apply calibration offsets
-            ypr[0] = ypr[0] - yprOffset[0];
-            ypr[1] = ypr[1] - yprOffset[1];
-            ypr[2] = ypr[2] - yprOffset[2];
-        }
-    }
+  if (!dmpReady) return false;
+  
+  // Check if MPU interrupt has fired or if there's data available
+  if (!mpuInterrupt && fifoCount < packetSize) {
+    // No data available yet
+    return false;
+  }
+  
+  // reset interrupt flag and get INT_STATUS byte
+  mpuInterrupt = false;
+  mpuIntStatus = mpu.getIntStatus();
+  
+  // get current FIFO count
+  fifoCount = mpu.getFIFOCount();
+  
+  // check for overflow
+  if ((mpuIntStatus & 0x10) || fifoCount == 1024) {
+    // reset so we can continue cleanly
+    mpu.resetFIFO();
+    Serial.println(F("FIFO overflow!"));
+    return false;
+  } 
+  // check for DMP data ready interrupt
+  else if (mpuIntStatus & 0x02) {
+    // wait for correct available data length, should be a VERY short wait
+    while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
+    
+    // read a packet from FIFO
+    mpu.getFIFOBytes(fifoBuffer, packetSize);
+    
+    // track FIFO count here in case there is > 1 packet available
+    fifoCount -= packetSize;
+    
+    // compute orientation values
+    mpu.dmpGetQuaternion(&q, fifoBuffer);
+    mpu.dmpGetGravity(&gravity, &q);
+    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+    
+    return true; // Successfully read data
+  }
+  
+  return false; // No data processed
 }
-
-// ================================================================
-// ===              SENSOR OFFSET CALIBRATION ROUTINE           ===
-// ================================================================
 
 void calibrateSensorOffsets() {
     int16_t accelSums[3] = {0, 0, 0};
@@ -297,13 +278,67 @@ void calibrateSensorOffsets() {
     
     // Fine-tune offsets through multiple iterations
     finetuneOffsets();
-    
+    //verifySensorCalibration();
     sensorOffsetCalibrated = true;
 }
 
-// ================================================================
-// ===              OFFSET FINE-TUNING ROUTINE                  ===
-// ================================================================
+void verifySensorCalibration() {
+  const int numReadings = 100;
+  int32_t accelSums[3] = {0, 0, 0};
+  int32_t gyroSums[3] = {0, 0, 0};
+  
+  Serial.println(F("Verifying calibration..."));
+  
+  // Take readings with offsets applied
+  for (int i = 0; i < numReadings; i++) {
+    mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+    
+    accelSums[0] += ax;
+    accelSums[1] += ay;
+    accelSums[2] += az;
+    gyroSums[0] += gx;
+    gyroSums[1] += gy;
+    gyroSums[2] += gz;
+    
+    delay(5);
+  }
+  
+  // Calculate averages
+  float accelAvg[3], gyroAvg[3];
+  accelAvg[0] = (float)accelSums[0] / numReadings;
+  accelAvg[1] = (float)accelSums[1] / numReadings;
+  accelAvg[2] = (float)accelSums[2] / numReadings;
+  gyroAvg[0] = (float)gyroSums[0] / numReadings;
+  gyroAvg[1] = (float)gyroSums[1] / numReadings;
+  gyroAvg[2] = (float)gyroSums[2] / numReadings;
+  
+  Serial.println(F("Calibration Results:"));
+  Serial.print(F("Accel (should be near 0,0,16384): "));
+  Serial.print(accelAvg[0]); Serial.print(", ");
+  Serial.print(accelAvg[1]); Serial.print(", ");
+  Serial.println(accelAvg[2]);
+  
+  Serial.print(F("Gyro (should be near 0,0,0): "));
+  Serial.print(gyroAvg[0]); Serial.print(", ");
+  Serial.print(gyroAvg[1]); Serial.print(", ");
+  Serial.println(gyroAvg[2]);
+  
+  // Check if calibration was successful
+  bool success = true;
+  if (abs(accelAvg[0]) > 50 || abs(accelAvg[1]) > 50 || abs(accelAvg[2] - 16384) > 50) {
+    success = false;
+  }
+  if (abs(gyroAvg[0]) > 5 || abs(gyroAvg[1]) > 5 || abs(gyroAvg[2]) > 5) {
+    success = false;
+  }
+  
+  if (success) {
+    Serial.println(F("Calibration successful!"));
+  } else {
+    Serial.println(F("Calibration may need improvement."));
+    Serial.println(F("Consider running finetuneOffsets() again with more iterations."));
+  }
+}
 
 void finetuneOffsets() {
     const int numIterations = 5;
@@ -384,44 +419,4 @@ void finetuneOffsets() {
     Serial.println(gyroOffsets[2]);
     
     Serial.println(F("Sensor offset calibration complete!"));
-}
-
-// ================================================================
-// ===                    YPR CALIBRATION ROUTINE               ===
-// ================================================================
-
-void calibrateYPR() {
-    static int sampleCount = 0;
-    static float yprSum[3] = {0, 0, 0};
-    
-    if (sampleCount < calibrationSamples) {
-        // Accumulate samples
-        yprSum[0] += ypr_cal[0];
-        yprSum[1] += ypr_cal[1];
-        yprSum[2] += ypr_cal[2];
-        
-        sampleCount++;
-        
-        if (sampleCount % 10 == 0) {
-            Serial.print("YPR Calibrating... ");
-            Serial.print(sampleCount);
-            Serial.print("/");
-            Serial.println(calibrationSamples);
-        }
-    } else {
-        // Calculate average offsets
-        yprOffset[0] = yprSum[0] / calibrationSamples;
-        yprOffset[1] = yprSum[1] / calibrationSamples;
-        yprOffset[2] = yprSum[2] / calibrationSamples;
-        
-        Serial.println("YPR Calibration complete!");
-        Serial.print("YPR Offsets - Yaw: ");
-        Serial.print(yprOffset[0]);
-        Serial.print(", Pitch: ");
-        Serial.print(yprOffset[1]);
-        Serial.print(", Roll: ");
-        Serial.println(yprOffset[2]);
-        
-        calibrated = true;
-    }
 }

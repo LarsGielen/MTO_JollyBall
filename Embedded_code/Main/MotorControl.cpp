@@ -3,8 +3,8 @@
 float lastWheelVel[3] = {0, 0, 0};
 
 int wheelDelay(float percentSpeed) {
-  const int MIN_DELAY = 2000;   // Minimum step delay (fastest speed)
-  const int MAX_DELAY = 7500; // Maximum step delay (slowest speed)
+  const int MIN_DELAY = 2000;   // Minimum step delay (fastest speed) 2000
+  const int MAX_DELAY = 7500; // Maximum step delay (slowest speed)  7500
 
   percentSpeed = constrain(percentSpeed, 0.0f, 1.0f);
   //Serial.println(MIN_DELAY + (MAX_DELAY - MIN_DELAY) * (1.0f-percentSpeed));
@@ -47,6 +47,8 @@ void rotateWheel(float motorspeed, bool dir, int wheelIndex) {
 }
 
 void move(const float moveDirection[2], float speedPercent) {
+  //Serial.println("Speedpercentage: ");
+  //Serial.println(speedPercent);
   float wheelVel[3];
   direction2wheelVelocity(moveDirection, wheelVel);
 
