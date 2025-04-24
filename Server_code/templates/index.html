@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control Panel</title>
+    <script>
+        let liveUpdateActive = false;
+
+        function toggleLiveUpdate() {
+            liveUpdateActive = !liveUpdateActive;
+            document.getElementById('live-update-status').textContent = liveUpdateActive ? 'ON' : 'OFF';
+        }
+
+        function handleInputChangeLive(event) {
+            if (!liveUpdateActive) return;
+            const input = event.target;
+            const data = { [input.name]: input.value };
+            sendLiveUpdate(data);
+        }
+
+        function updateFields() {
+            const mode = document.getElementById('mode').value;
+            document.getElementById('manual-fields').style.display = mode === 'manual' ? 'block' : 'none';
+            document.getElementById('pid-fields').style.display = mode === 'pid' ? 'block' : 'none';
+            document.getElementById('single-wheel-fields').style.display = mode === 'single-wheel' ? 'block' : 'none';
+        }
+
+        function updateSliderValue(sliderId, outputId) {
+            const slider = document.getElementById(sliderId);
+            const output = document.getElementById(outputId);
+            output.textContent = slider.value;
+        }
+
+        function resetSlider(sliderId, outputId) {
+            const slider = document.getElementById(sliderId);
+            const output = document.getElementById(outputId);
+            slider.value = 0;
+            output.textContent = 0;
+        }
+
+        function updateKnob(event) {
+            const knob = document.getElementById('direction-knob');
+            const arrow = document.getElementById('direction-arrow');
+            const rect = knob.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            const deltaX = event.clientX - centerX;
+            const deltaY = event.clientY - centerY;
+            const angle = Math.atan2(deltaY, deltaX);
+
+            // Update knob rotation
+            arrow.style.transform = `rotate(${angle + Math.PI / 2}rad)`;
+
+            // Update x and y components
+            const xComponent = Math.cos(angle).toFixed(2);
+            const yComponent = Math.sin(angle).toFixed(2);
+            document.getElementById('direction-x').value = xComponent;
+            document.getElementById('direction-y').value = yComponent;
+
+            // Trigger live update for direction
+            sendLiveUpdate({ direction_x: xComponent, direction_y: yComponent });
+        }
+
+        function resetToDefaults() {
+            document.getElementById('min-delay').value = 10;
+            document.getElementById('max-delay').value = 100;
+            document.getElementById('mode').value = 'manual';
+            updateFields();
+
+            document.getElementById('speed').value = 0;
+            document.getElementById('speed-value').textContent = 0;
+
+            document.getElementById('direction-x').value = 0;
+            document.getElementById('direction-y').value = 0;
+            document.getElementById('direction-arrow').style.transform = 'rotate(-90deg)';
+
+            document.getElementById('kp').value = 1.0;
+            document.getElementById('ki').value = 0.5;
+            document.getElementById('kd').value = 0.1;
+
+            document.getElementById('wheel1-speed').value = 0;
+            document.getElementById('wheel1-speed-value').textContent = 0;
+            document.getElementById('wheel2-speed').value = 0;
+            document.getElementById('wheel2-speed-value').textContent = 0;
+            document.getElementById('wheel3-speed').value = 0;
+            document.getElementById('wheel3-speed-value').textContent = 0;
+        }
+
+        function resetInput(inputId, defaultValue, outputId = null) {
+            const input = document.getElementById(inputId);
+            input.value = defaultValue;
+            if (outputId) {
+                const output = document.getElementById(outputId);
+                output.textContent = defaultValue;
+            }
+            // Trigger live update after reset
+            const data = { [input.name]: input.value };
+            sendLiveUpdate(data);
+
+            // If resetting direction components, update the knob
+            if (inputId === 'direction-x' || inputId === 'direction-y') {
+                const x = parseFloat(document.getElementById('direction-x').value) || 0;
+                const y = parseFloat(document.getElementById('direction-y').value) || 0;
+                const angle = Math.atan2(y, x);
+                const arrow = document.getElementById('direction-arrow');
+                arrow.style.transform = `rotate(${angle + Math.PI / 2}rad)`;
+            }
+        }
+
+        async function sendLiveUpdate(data) {
+            if (!liveUpdateActive) return; // Prevent sending updates if live update is toggled off
+            try {
+                const response = await fetch('/update', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data),
+                });
+                const result = await response.json();
+                console.log('Server response:', result);
+            } catch (error) {
+                console.error('Error sending live update:', error);
+            }
+        }
+    </script>
+    <style>
+        #direction-knob {
+            position: relative;
+            width: 100px;
+            height: 100px;
+            background: lightgray;
+            border-radius: 50%;
+        }
+
+        #direction-arrow {
+            position: absolute;
+            width: 2px;
+            height: 40px;
+            background: red;
+            top: 10px;
+            left: 49px;
+            transform-origin: bottom center;
+        }
+    </style>
+</head>
+<body>
+    <h1>Control Panel</h1>
+
+    <label for="live-update-toggle">Activate Live Update:</label>
+    <button type="button" id="live-update-toggle" onclick="toggleLiveUpdate()">Toggle</button>
+    <span id="live-update-status">OFF</span><br><br>
+
+    <form action="javascript:void(0);" oninput="handleInputChangeLive(event)">
+        <label for="min-delay">Minimum Delay:</label>
+        <input type="number" id="min-delay" name="min_delay" value="10" required>
+        <button type="button" onclick="resetInput('min-delay', 10)">Reset</button><br><br>
+
+        <label for="max-delay">Maximum Delay:</label>
+        <input type="number" id="max-delay" name="max_delay" value="100" required>
+        <button type="button" onclick="resetInput('max-delay', 100)">Reset</button><br><br>
+
+        <label for="mode">Mode:</label>
+        <select id="mode" name="mode" onchange="updateFields()" required>
+            <option value="manual">Manual</option>
+            <option value="pid">PID</option>
+            <option value="single-wheel">Single Wheel</option>
+        </select>
+        <button type="button" onclick="resetInput('mode', 'manual'); updateFields()">Reset</button><br><br>
+
+        <div id="manual-fields" style="display: none;">
+            <label for="speed">Speed Percentage:</label>
+            <input type="range" id="speed" name="speed" min="-100" max="100" oninput="updateSliderValue('speed', 'speed-value')">
+            <span id="speed-value">0</span>
+            <button type="button" onclick="resetInput('speed', 0, 'speed-value')">Reset</button><br><br>
+
+            <label for="direction">Direction:</label>
+            <div id="direction-knob" onmousedown="document.addEventListener('mousemove', updateKnob)" onmouseup="document.removeEventListener('mousemove', updateKnob)">
+                <div id="direction-arrow"></div>
+            </div>
+            <label for="direction-x">X Component:</label>
+            <input type="text" id="direction-x" name="direction_x" value="0" readonly oninput="updateArrowFromComponents()">
+            <button type="button" onclick="resetInput('direction-x', 0); updateArrowFromComponents()">Reset</button><br><br>
+            <label for="direction-y">Y Component:</label>
+            <input type="text" id="direction-y" name="direction_y" value="0" readonly oninput="updateArrowFromComponents()">
+            <button type="button" onclick="resetInput('direction-y', 0); updateArrowFromComponents()">Reset</button><br><br>
+        </div>
+
+        <div id="pid-fields" style="display: none;">
+            <label for="kp">Kp:</label>
+            <input type="number" id="kp" name="kp" step="0.01" value="1.0">
+            <button type="button" onclick="resetInput('kp', 1.0)">Reset</button><br><br>
+
+            <label for="ki">Ki:</label>
+            <input type="number" id="ki" name="ki" step="0.01" value="0.5">
+            <button type="button" onclick="resetInput('ki', 0.5)">Reset</button><br><br>
+
+            <label for="kd">Kd:</label>
+            <input type="number" id="kd" name="kd" step="0.01" value="0.1">
+            <button type="button" onclick="resetInput('kd', 0.1)">Reset</button><br><br>
+        </div>
+
+        <div id="single-wheel-fields" style="display: none;">
+            <label for="wheel1-speed">Wheel 1 Speed Percentage:</label>
+            <input type="range" id="wheel1-speed" name="wheel1_speed" min="-100" max="100" oninput="updateSliderValue('wheel1-speed', 'wheel1-speed-value')">
+            <span id="wheel1-speed-value">0</span>
+            <button type="button" onclick="resetInput('wheel1-speed', 0, 'wheel1-speed-value')">Reset</button><br><br>
+
+            <label for="wheel2-speed">Wheel 2 Speed Percentage:</label>
+            <input type="range" id="wheel2-speed" name="wheel2_speed" min="-100" max="100" oninput="updateSliderValue('wheel2-speed', 'wheel2-speed-value')">
+            <span id="wheel2-speed-value">0</span>
+            <button type="button" onclick="resetInput('wheel2-speed', 0, 'wheel2-speed-value')">Reset</button><br><br>
+
+            <label for="wheel3-speed">Wheel 3 Speed Percentage:</label>
+            <input type="range" id="wheel3-speed" name="wheel3_speed" min="-100" max="100" oninput="updateSliderValue('wheel3-speed', 'wheel3-speed-value')">
+            <span id="wheel3-speed-value">0</span>
+            <button type="button" onclick="resetInput('wheel3-speed', 0, 'wheel3-speed-value')">Reset</button><br><br>
+        </div>
+    </form>
+
+    <script>
+        // Set default values on page load
+        window.onload = resetToDefaults;
+    </script>
+</body>
+</html>
