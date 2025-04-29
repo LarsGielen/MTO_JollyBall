@@ -44,13 +44,6 @@ void loop()
   // Try to get sensor data, but don't block. Returns from the function and proceeds on "old" data.
   bool b_newMpuData = readout_mpu_ypr(ypr);
  
-  Serial.print("Yaw: ");
-  Serial.print(ypr[0]);
-  Serial.print(", Pitch: ");
-  Serial.print(ypr[1]);
-  Serial.print(", Roll: ");
-  Serial.println(ypr[2]);
-  
 /*
   pitchInput = (double)ypr[1];
   rollInput = (double)ypr[2];
