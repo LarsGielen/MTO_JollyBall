@@ -2,6 +2,6 @@
 #define MPU6050_PID_YPR
 
 void setup_MPU6050();
-bool readout_MPU6050(float* ypr);
+bool readout_mpu_ypr(float* ypr);
 
 #endif

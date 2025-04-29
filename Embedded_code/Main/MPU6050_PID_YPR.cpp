@@ -1,9 +1,12 @@
 #include "I2Cdev.h"
-#include "MPU6050_6Axis_MotionApps20.h"
+#include "MPU6050_6Axis_MotionApps612.h"
 #include "Wire.h"
 
-// MPU6050 object
 MPU6050 mpu;
+
+#define INTERRUPT_PIN 2
+#define LED_PIN 13 
+bool blinkState = false;
 
 // MPU control/status vars
 bool dmpReady = false;  // set true if DMP init was successful
@@ -12,60 +15,18 @@ uint8_t devStatus;      // return status after each device operation (0 = succes
 uint16_t packetSize;    // expected DMP packet size (default is 42 bytes)
 uint16_t fifoCount;     // count of all bytes currently in FIFO
 uint8_t fifoBuffer[64]; // FIFO storage buffer
-float ypr_cal[3];
-// Orientation/motion vars
-VectorFloat gravity;    // [x, y, z]            gravity vector
+
+// orientation/motion vars
 Quaternion q;           // [w, x, y, z]         quaternion container
-
-float yprOffset[3] = {0, 0, 0}; // calibration offsets
-
-// Calibration vars
-const int calibrationSamples = 100;
-bool calibrated = false;
-bool sensorOffsetCalibrated = false;
-
-// Raw accel/gyro values for offset calibration
-int16_t ax, ay, az;
-int16_t gx, gy, gz;
-
-// Sensor offsets
-int16_t accelOffsets[3] = {0, 0, 0};  // [x, y, z]
-int16_t gyroOffsets[3] = {0, 0, 0};   // [x, y, z]
-
-static float filteredYaw = 0;
-static float filteredPitch = 0;
-static float filteredRoll = 0;
-const float alpha = 0.05; // Low alpha value for stronger smoothing
-std::array<float,3> results;
-
-// MPU6050 Register addresses
-#define MPU6050_RA_CONFIG           0x1A
-#define MPU6050_RA_SMPLRT_DIV       0x19
-#define MPU6050_RA_GYRO_CONFIG      0x1B
-#define MPU6050_RA_ACCEL_CONFIG     0x1C
-
-// DLPF Configuration options
-#define MPU6050_DLPF_BW_256         0x00
-#define MPU6050_DLPF_BW_188         0x01
-#define MPU6050_DLPF_BW_98          0x02
-#define MPU6050_DLPF_BW_42          0x03
-#define MPU6050_DLPF_BW_20          0x04
-#define MPU6050_DLPF_BW_10          0x05
-#define MPU6050_DLPF_BW_5           0x06
+VectorFloat gravity;    // [x, y, z]            gravity vector
 
 // ================================================================
 // ===               INTERRUPT DETECTION ROUTINE                ===
 // ================================================================
-void configureDLPF();
-void calibrateSensorOffsets();
-void finetuneOffsets();
-void calibrateYPR();
-void setup_MPU6050();
-void verifySensorCalibration();
 
 volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin has gone high
 void dmpDataReady() {
-    mpuInterrupt = true;
+  mpuInterrupt = true;
 }
 
 // ================================================================
@@ -73,350 +34,88 @@ void dmpDataReady() {
 // ================================================================
 
 void setup_MPU6050() {
-    // join I2C bus (I2Cdev library doesn't do this automatically)
-    Wire.begin();
-    Wire.setClock(400000); // 400kHz I2C clock
-    
-    // initialize serial communication
-    Serial.begin(9600);
-    while (!Serial); // wait for Leonardo/Micro/Pro Micro
-    
-    // initialize device
-    Serial.println(F("Initializing I2C devices..."));
-    mpu.initialize();
+  Wire.begin();
+  Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
 
-    // verify connection
-    Serial.println(F("Testing device connections..."));
-    Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
-    
-    // Configure DLPF
-    Serial.println(F("Configuring DLPF settings..."));
-    configureDLPF();
-    
-    // Start with sensor offset calibration
-    Serial.println(F("Starting sensor offset calibration in 3 seconds..."));
-    Serial.println(F("Keep the MPU6050 stationary on a level surface"));
-    delay(3000);
-    calibrateSensorOffsets();
-    
-    // Now initialize the DMP with the calibrated offsets
-    Serial.println(F("Initializing DMP..."));
-    devStatus = mpu.dmpInitialize();
+  Serial.begin(9600);
+  while (!Serial); // wait for Leonardo enumeration, others continue immediately
 
-    // Supply the calibrated offsets to the DMP
-    mpu.setXAccelOffset(accelOffsets[0]);
-    mpu.setYAccelOffset(accelOffsets[1]);
-    mpu.setZAccelOffset(accelOffsets[2]);
-    mpu.setXGyroOffset(gyroOffsets[0]);
-    mpu.setYGyroOffset(gyroOffsets[1]);
-    mpu.setZGyroOffset(gyroOffsets[2]);
+  // initialize device
+  Serial.println(F("Initializing I2C devices..."));
+  mpu.initialize();
+  pinMode(INTERRUPT_PIN, INPUT);
 
-    // make sure it worked (returns 0 if so)
-    if (devStatus == 0) {
-        // turn on the DMP, now that it's ready
-        Serial.println(F("Enabling DMP..."));
-        mpu.setDMPEnabled(true);
+  // verify connection
+  Serial.println(F("Testing device connections..."));
+  Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
 
-        // enable Arduino interrupt detection
-        Serial.println(F("Enabling interrupt detection (Arduino external interrupt 0)..."));
-        attachInterrupt(digitalPinToInterrupt(2), dmpDataReady, RISING);
-        mpuIntStatus = mpu.getIntStatus();
+  // load and configure the DMP
+  Serial.println(F("Initializing DMP..."));
+  devStatus = mpu.dmpInitialize();
 
-        // set our DMP Ready flag so the main loop() function knows it's okay to use it
-        Serial.println(F("DMP ready! Waiting for first interrupt..."));
-        dmpReady = true;
+  // supply your own gyro offsets here, scaled for min sensitivity
+  mpu.setXGyroOffset(51);
+  mpu.setYGyroOffset(8);
+  mpu.setZGyroOffset(21);
+  mpu.setXAccelOffset(1150);
+  mpu.setYAccelOffset(-50);
+  mpu.setZAccelOffset(1060);
+  // make sure it worked (returns 0 if so)
+  if (devStatus == 0) {
+    // Calibration Time: generate offsets and calibrate our MPU6050
+    mpu.CalibrateAccel(6);
+    mpu.CalibrateGyro(6);
+    Serial.println();
+    mpu.PrintActiveOffsets();
+    // turn on the DMP, now that it's ready
+    Serial.println(F("Enabling DMP..."));
+    mpu.setDMPEnabled(true);
 
-        // get expected DMP packet size for later comparison
-        packetSize = mpu.dmpGetFIFOPacketSize();
-        
-        Serial.println(F("Starting YPR calibration in 3 seconds..."));
-        Serial.println(F("Keep the MPU6050 stationary in its mounted position"));
-        delay(3000);
-    } else {
-        // ERROR!
-        // 1 = initial memory load failed
-        // 2 = DMP configuration updates failed
-        // (if it's going to break, usually the code will be 1)
-        Serial.print(F("DMP Initialization failed (code "));
-        Serial.print(devStatus);
-        Serial.println(F(")"));
-    }
-}
+    // enable Arduino interrupt detection
+    Serial.print(F("Enabling interrupt detection (Arduino external interrupt "));
+    Serial.print(digitalPinToInterrupt(INTERRUPT_PIN));
+    Serial.println(F(")..."));
+    attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), dmpDataReady, RISING);
+    mpuIntStatus = mpu.getIntStatus();
 
-// ================================================================
-// ===                    DLPF CONFIGURATION                    ===
-// ================================================================
+    // set our DMP Ready flag so the main loop() function knows it's okay to use it
+    Serial.println(F("DMP ready! Waiting for first interrupt..."));
+    dmpReady = true;
 
-void configureDLPF() {
-    // Set the Digital Low Pass Filter (DLPF)
-    // This affects both gyro and accelerometer bandwidth
-    //
-    // DLPF_CFG | Bandwidth | Delay   | Fs
-    // ---------+-----------+---------+------
-    // 0        | 260 Hz    | 0.0 ms  | 8 kHz
-    // 1        | 184 Hz    | 2.0 ms  | 1 kHz
-    // 2        | 94 Hz     | 3.0 ms  | 1 kHz
-    // 3        | 44 Hz     | 4.9 ms  | 1 kHz
-    // 4        | 21 Hz     | 8.5 ms  | 1 kHz
-    // 5        | 10 Hz     | 13.8 ms | 1 kHz
-    // 6        | 5 Hz      | 19.0 ms | 1 kHz
-    
-    // Set DLPF to lowest bandwidth (5 Hz) for maximum stability
-    mpu.setDLPFMode(MPU6050_DLPF_BW_5);
-    
-    // Set the sample rate divider for the slowest possible rate
-    // Sample Rate = Gyroscope Output Rate / (1 + SMPLRT_DIV)
-    // Gyroscope Output Rate = 8kHz when DLPF is disabled (DLPF_CFG = 0 or 7), 1kHz when enabled
-    // With DLPF enabled, setting maximum divider of 255 gives:
-    // Sample Rate = 1000 / (1 + 255) = ~3.9 Hz
-    // mpu.setRate(255);
-    
-    // Configure additional settings
-    // Full-scale range: ±250°/s gives maximum sensitivity
-    mpu.setFullScaleGyroRange(MPU6050_GYRO_FS_250);//MPU6050_GYRO_FS_250
-    
-    // Full-scale range: ±2g gives maximum sensitivity
-    mpu.setFullScaleAccelRange(MPU6050_ACCEL_FS_2);//MPU6050_ACCEL_FS_2
-    
-    Serial.println(F("DLPF configured for maximum stability:"));
-    Serial.println(F("- DLPF Bandwidth: 5 Hz"));
-    Serial.println(F("- Sample Rate: ~3.9 Hz"));
-    Serial.println(F("- Gyro Range: ±250°/s"));
-    Serial.println(F("- Accel Range: ±2g"));
-}
-
-bool readout_MPU6050(float* ypr){
-  // if programming failed, don't try to do anything
-  if (!dmpReady) return false;
-  
-  // Check if MPU interrupt has fired or if there's data available
-  if (!mpuInterrupt && fifoCount < packetSize) {
-    // No data available yet
-    return false;
+    // get expected DMP packet size for later comparison
+    packetSize = mpu.dmpGetFIFOPacketSize();
+  } else {
+    Serial.print(F("DMP Initialization failed (code "));
+    Serial.print(devStatus);
+    Serial.println(F(")"));
   }
-  
-  // reset interrupt flag and get INT_STATUS byte
-  mpuInterrupt = false;
-  mpuIntStatus = mpu.getIntStatus();
-  
-  // get current FIFO count
-  fifoCount = mpu.getFIFOCount();
-  
-  // check for overflow
-  if ((mpuIntStatus & 0x10) || fifoCount == 1024) {
-    // reset so we can continue cleanly
-    mpu.resetFIFO();
-    Serial.println(F("FIFO overflow!"));
-    return false;
-  } 
-  // check for DMP data ready interrupt
-  else if (mpuIntStatus & 0x02) {
-    // wait for correct available data length, should be a VERY short wait
-    while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
-    
-    // read a packet from FIFO
-    mpu.getFIFOBytes(fifoBuffer, packetSize);
-    
-    // track FIFO count here in case there is > 1 packet available
-    fifoCount -= packetSize;
-    
-    // compute orientation values
+  // configure LED for output
+  pinMode(LED_PIN, OUTPUT);
+}
+
+// ================================================================
+// ===                    MAIN PROGRAM LOOP                     ===
+// ================================================================
+
+void readout_mpu_ypr(float* ypr) {
+  // if programming failed, don't try to do anything
+  if (!dmpReady) return;
+  // read a packet from FIFO
+  if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) { // Get the Latest packet 
+
+    // display Euler angles in degrees
     mpu.dmpGetQuaternion(&q, fifoBuffer);
     mpu.dmpGetGravity(&gravity, &q);
     mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-    
-    return true; // Successfully read data
-  }
-  
-  return false; // No data processed
-}
+    Serial.print("ypr\t");
+    Serial.print(ypr[0]);
+    Serial.print("\t");
+    Serial.print(ypr[1]);
+    Serial.print("\t");
+    Serial.println(ypr[2]);
 
-void calibrateSensorOffsets() {
-    int16_t accelSums[3] = {0, 0, 0};
-    int16_t gyroSums[3] = {0, 0, 0};
-    const int numCalibrationReadings = 200;
-    
-    Serial.println(F("Calibrating accelerometer and gyroscope offsets..."));
-    
-    // Take multiple readings and average them
-    for (int i = 0; i < numCalibrationReadings; i++) {
-        mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-        
-        accelSums[0] += ax;
-        accelSums[1] += ay;
-        accelSums[2] += az;
-        gyroSums[0] += gx;
-        gyroSums[1] += gy;
-        gyroSums[2] += gz;
-        
-        if (i % 50 == 0) {
-            Serial.print(".");
-        }
-        delay(10);
-    }
-    
-    // Calculate offsets (negative of the average)
-    accelOffsets[0] = -accelSums[0] / numCalibrationReadings;
-    accelOffsets[1] = -accelSums[1] / numCalibrationReadings;
-    // For Z, we want 16384 (1g) after offset
-    accelOffsets[2] = -(accelSums[2] / numCalibrationReadings - 16384);
-    
-    gyroOffsets[0] = -gyroSums[0] / numCalibrationReadings;
-    gyroOffsets[1] = -gyroSums[1] / numCalibrationReadings;
-    gyroOffsets[2] = -gyroSums[2] / numCalibrationReadings;
-    
-    Serial.println();
-    Serial.println(F("Accel offsets [X,Y,Z]: "));
-    Serial.print(accelOffsets[0]); Serial.print(", ");
-    Serial.print(accelOffsets[1]); Serial.print(", ");
-    Serial.println(accelOffsets[2]);
-    
-    Serial.println(F("Gyro offsets [X,Y,Z]: "));
-    Serial.print(gyroOffsets[0]); Serial.print(", ");
-    Serial.print(gyroOffsets[1]); Serial.print(", ");
-    Serial.println(gyroOffsets[2]);
-    
-    // Fine-tune offsets through multiple iterations
-    finetuneOffsets();
-    //verifySensorCalibration();
-    sensorOffsetCalibrated = true;
-}
-
-void verifySensorCalibration() {
-  const int numReadings = 100;
-  int32_t accelSums[3] = {0, 0, 0};
-  int32_t gyroSums[3] = {0, 0, 0};
-  
-  Serial.println(F("Verifying calibration..."));
-  
-  // Take readings with offsets applied
-  for (int i = 0; i < numReadings; i++) {
-    mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-    
-    accelSums[0] += ax;
-    accelSums[1] += ay;
-    accelSums[2] += az;
-    gyroSums[0] += gx;
-    gyroSums[1] += gy;
-    gyroSums[2] += gz;
-    
-    delay(5);
+    // blink LED to indicate activity
+    blinkState = !blinkState;
+    digitalWrite(LED_PIN, blinkState);
   }
-  
-  // Calculate averages
-  float accelAvg[3], gyroAvg[3];
-  accelAvg[0] = (float)accelSums[0] / numReadings;
-  accelAvg[1] = (float)accelSums[1] / numReadings;
-  accelAvg[2] = (float)accelSums[2] / numReadings;
-  gyroAvg[0] = (float)gyroSums[0] / numReadings;
-  gyroAvg[1] = (float)gyroSums[1] / numReadings;
-  gyroAvg[2] = (float)gyroSums[2] / numReadings;
-  
-  Serial.println(F("Calibration Results:"));
-  Serial.print(F("Accel (should be near 0,0,16384): "));
-  Serial.print(accelAvg[0]); Serial.print(", ");
-  Serial.print(accelAvg[1]); Serial.print(", ");
-  Serial.println(accelAvg[2]);
-  
-  Serial.print(F("Gyro (should be near 0,0,0): "));
-  Serial.print(gyroAvg[0]); Serial.print(", ");
-  Serial.print(gyroAvg[1]); Serial.print(", ");
-  Serial.println(gyroAvg[2]);
-  
-  // Check if calibration was successful
-  bool success = true;
-  if (abs(accelAvg[0]) > 50 || abs(accelAvg[1]) > 50 || abs(accelAvg[2] - 16384) > 50) {
-    success = false;
-  }
-  if (abs(gyroAvg[0]) > 5 || abs(gyroAvg[1]) > 5 || abs(gyroAvg[2]) > 5) {
-    success = false;
-  }
-  
-  if (success) {
-    Serial.println(F("Calibration successful!"));
-  } else {
-    Serial.println(F("Calibration may need improvement."));
-    Serial.println(F("Consider running finetuneOffsets() again with more iterations."));
-  }
-}
-
-void finetuneOffsets() {
-    const int numIterations = 5;
-    const int numReadings = 50;
-    
-    Serial.println(F("Fine-tuning offsets..."));
-    
-    for (int iteration = 0; iteration < numIterations; iteration++) {
-        // Apply current offsets
-        mpu.setXAccelOffset(accelOffsets[0]);
-        mpu.setYAccelOffset(accelOffsets[1]);
-        mpu.setZAccelOffset(accelOffsets[2]);
-        mpu.setXGyroOffset(gyroOffsets[0]);
-        mpu.setYGyroOffset(gyroOffsets[1]);
-        mpu.setZGyroOffset(gyroOffsets[2]);
-        
-        delay(100);
-        
-        // Take new readings with offsets applied
-        int32_t accelSums[3] = {0, 0, 0};
-        int32_t gyroSums[3] = {0, 0, 0};
-        
-        for (int i = 0; i < numReadings; i++) {
-            mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-            
-            accelSums[0] += ax;
-            accelSums[1] += ay;
-            accelSums[2] += az;
-            gyroSums[0] += gx;
-            gyroSums[1] += gy;
-            gyroSums[2] += gz;
-            
-            delay(10);
-        }
-        
-        // Calculate remaining error
-        int16_t accelError[3];
-        int16_t gyroError[3];
-        
-        accelError[0] = accelSums[0] / numReadings;
-        accelError[1] = accelSums[1] / numReadings;
-        accelError[2] = accelSums[2] / numReadings - 16384; // Z should read 1g (16384)
-        
-        gyroError[0] = gyroSums[0] / numReadings;
-        gyroError[1] = gyroSums[1] / numReadings;
-        gyroError[2] = gyroSums[2] / numReadings;
-        
-        // Adjust offsets further
-        accelOffsets[0] -= accelError[0] / 8; // Divide by 8 for smoother convergence
-        accelOffsets[1] -= accelError[1] / 8;
-        accelOffsets[2] -= accelError[2] / 8;
-        
-        gyroOffsets[0] -= gyroError[0] / 4;
-        gyroOffsets[1] -= gyroError[1] / 4;
-        gyroOffsets[2] -= gyroError[2] / 4;
-        
-        Serial.print(F("Iteration "));
-        Serial.print(iteration + 1);
-        Serial.println(F(" completed"));
-    }
-    
-    // Set final offsets
-    mpu.setXAccelOffset(accelOffsets[0]);
-    mpu.setYAccelOffset(accelOffsets[1]);
-    mpu.setZAccelOffset(accelOffsets[2]);
-    mpu.setXGyroOffset(gyroOffsets[0]);
-    mpu.setYGyroOffset(gyroOffsets[1]);
-    mpu.setZGyroOffset(gyroOffsets[2]);
-    
-    Serial.println(F("Final Accel offsets [X,Y,Z]: "));
-    Serial.print(accelOffsets[0]); Serial.print(", ");
-    Serial.print(accelOffsets[1]); Serial.print(", ");
-    Serial.println(accelOffsets[2]);
-    
-    Serial.println(F("Final Gyro offsets [X,Y,Z]: "));
-    Serial.print(gyroOffsets[0]); Serial.print(", ");
-    Serial.print(gyroOffsets[1]); Serial.print(", ");
-    Serial.println(gyroOffsets[2]);
-    
-    Serial.println(F("Sensor offset calibration complete!"));
 }
