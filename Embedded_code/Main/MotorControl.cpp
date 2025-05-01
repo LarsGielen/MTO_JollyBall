@@ -47,8 +47,6 @@ void rotateWheel(float motorspeed, bool dir, int wheelIndex) {
 }
 
 void move(const float moveDirection[2], float speedPercent) {
-  //Serial.println("Speedpercentage: ");
-  //Serial.println(speedPercent);
   float wheelVel[3];
   direction2wheelVelocity(moveDirection, wheelVel);
 

@@ -1,11 +1,13 @@
 #include "I2Cdev.h"
 #include "MPU6050_6Axis_MotionApps612.h"
 #include "Wire.h"
+#include "MPU6050_YPR.h"
 
 MPU6050 mpu;
 
 #define INTERRUPT_PIN 2
 #define LED_PIN 13 
+
 bool blinkState = false;
 
 // MPU control/status vars
@@ -33,7 +35,10 @@ void dmpDataReady() {
 // ===                      INITIAL SETUP                       ===
 // ================================================================
 
-void setup_MPU6050() {
+void setup_MPU6050(bool calibrate) 
+{
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, 1);
   Wire.begin();
   Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
 
@@ -45,7 +50,7 @@ void setup_MPU6050() {
   mpu.initialize();
   pinMode(INTERRUPT_PIN, INPUT);
 
-  // verify connection
+  // verify I2C connection
   Serial.println(F("Testing device connections..."));
   Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
 
@@ -54,27 +59,30 @@ void setup_MPU6050() {
   devStatus = mpu.dmpInitialize();
 
   // supply your own gyro offsets here, scaled for min sensitivity
-  mpu.setXGyroOffset(51);
-  mpu.setYGyroOffset(8);
-  mpu.setZGyroOffset(21);
-  mpu.setXAccelOffset(1150);
-  mpu.setYAccelOffset(-50);
-  mpu.setZAccelOffset(1060);
+  mpu.setXAccelOffset(OFFSET_X_ACCEL);
+  mpu.setYAccelOffset(OFFSET_Y_ACCEL);
+  mpu.setZAccelOffset(OFFSET_Z_ACCEL);
+  mpu.setXGyroOffset(OFFSET_X_GYRO);
+  mpu.setYGyroOffset(OFFSET_Y_GYRO);
+  mpu.setZGyroOffset(OFFSET_Z_GYRO);  
+  
   // make sure it worked (returns 0 if so)
   if (devStatus == 0) {
-    // Calibration Time: generate offsets and calibrate our MPU6050
-    mpu.CalibrateAccel(6);
-    mpu.CalibrateGyro(6);
-    Serial.println();
-    mpu.PrintActiveOffsets();
+    if (calibrate == true){
+      Serial.println("Calibration in the progress!");
+      // Calibration Time: generate offsets and calibrate our MPU6050
+      mpu.CalibrateAccel(6);
+      mpu.CalibrateGyro(6);
+      mpu.PrintActiveOffsets();
+      Serial.println();
+    }
+    Serial.println("Predefined offsets are set!");
+    
     // turn on the DMP, now that it's ready
     Serial.println(F("Enabling DMP..."));
     mpu.setDMPEnabled(true);
 
     // enable Arduino interrupt detection
-    Serial.print(F("Enabling interrupt detection (Arduino external interrupt "));
-    Serial.print(digitalPinToInterrupt(INTERRUPT_PIN));
-    Serial.println(F(")..."));
     attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), dmpDataReady, RISING);
     mpuIntStatus = mpu.getIntStatus();
 
@@ -88,34 +96,28 @@ void setup_MPU6050() {
     Serial.print(F("DMP Initialization failed (code "));
     Serial.print(devStatus);
     Serial.println(F(")"));
-  }
-  // configure LED for output
-  pinMode(LED_PIN, OUTPUT);
+  }  
+  digitalWrite(LED_PIN, 0);
 }
 
 // ================================================================
 // ===                    MAIN PROGRAM LOOP                     ===
 // ================================================================
 
-void readout_mpu_ypr(float* ypr) {
+bool readout_mpu_ypr(float* ypr) 
+{
   // if programming failed, don't try to do anything
-  if (!dmpReady) return;
+  if (!dmpReady){
+    Serial.println("Programming the dmp of the mpu6050 failed.");
+    return false;
+  }
   // read a packet from FIFO
-  if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) { // Get the Latest packet 
-
-    // display Euler angles in degrees
+  if (mpu.dmpGetCurrentFIFOPacket(fifoBuffer)) 
+  { // Get the Latest packet 
     mpu.dmpGetQuaternion(&q, fifoBuffer);
     mpu.dmpGetGravity(&gravity, &q);
     mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-    Serial.print("ypr\t");
-    Serial.print(ypr[0]);
-    Serial.print("\t");
-    Serial.print(ypr[1]);
-    Serial.print("\t");
-    Serial.println(ypr[2]);
-
-    // blink LED to indicate activity
-    blinkState = !blinkState;
-    digitalWrite(LED_PIN, blinkState);
+    return true;
   }
+  return false;
 }
