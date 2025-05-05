@@ -169,6 +169,13 @@
         </select>
         <button type="button" onclick="resetInput('mode', 'manual'); updateFields()">Reset</button><br><br>
 
+        <label for="com-port">Select COM Port:</label>
+        <select id="com-port" name="com_port" required>
+            <option value="" disabled selected>Scanning...</option>
+        </select>
+        <button type="button" onclick="resetInput('com-port', '')">Reset</button>
+        <button type="button" onclick="connectToArduino()">Connect</button><br><br>
+
         <div id="manual-fields" style="display: none;">
             <label for="speed">Speed Percentage:</label>
             <input type="range" id="speed" name="speed" min="-100" max="100" oninput="updateSliderValue('speed', 'speed-value')">
@@ -220,8 +227,50 @@
     </form>
 
     <script>
-        // Set default values on page load
-        window.onload = resetToDefaults;
+        async function fetchComPorts() {
+            try {
+                const response = await fetch('/scan-com-ports');
+                const ports = await response.json();
+                const comPortSelect = document.getElementById('com-port');
+                comPortSelect.innerHTML = ''; // Clear existing options
+                ports.forEach(port => {
+                    const option = document.createElement('option');
+                    option.value = port;
+                    option.textContent = port;
+                    comPortSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error fetching COM ports:', error);
+            }
+        }
+
+        // Fetch COM ports on page load
+        window.onload = function() {
+            resetToDefaults();
+            fetchComPorts();
+        };
+
+        async function connectToArduino() {
+            const comPort = document.getElementById('com-port').value;
+            if (!comPort) {
+                alert('Please select a COM port before connecting.');
+                return;
+            }
+            try {
+                const response = await fetch('/connect', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ com_port: comPort }),
+                });
+                const result = await response.json();
+                alert(result.message);
+            } catch (error) {
+                console.error('Error connecting to Arduino:', error);
+                alert('Failed to connect to Arduino.');
+            }
+        }
     </script>
 </body>
 </html>

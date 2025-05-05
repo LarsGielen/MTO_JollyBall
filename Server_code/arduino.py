@@ -1,5 +1,20 @@
 import serial
 
+connection = None
+
+def get_open_connection():
+    """
+    Returns the current open serial connection.
+
+    :return: The current serial connection if open, None otherwise.
+    """
+    global connection
+    if connection and connection.is_open:
+        return connection
+    else:
+        print("No open serial connection.")
+        return None
+
 def open_serial_connection(com_port, baud_rate):
     """
     Opens a serial connection with the specified COM port and baud rate.
@@ -11,6 +26,8 @@ def open_serial_connection(com_port, baud_rate):
     try:
         ser = serial.Serial(port=com_port, baudrate=baud_rate, timeout=1)
         print(f"Serial connection opened on {com_port} at {baud_rate} baud.")
+        global connection
+        connection = ser
         return ser
     except serial.SerialException as e:
         print(f"Failed to open serial connection: {e}")
@@ -38,7 +55,6 @@ def send_data(ser, data):
     if ser and ser.is_open:
         try:
             ser.write(data.encode())
-            print(f"Data sent: {data}")
         except serial.SerialException as e:
             print(f"Failed to send data: {e}")
     else:
@@ -54,10 +70,8 @@ def read_data(ser):
     if ser and ser.is_open:
         try:
             data = ser.readline().decode().strip()
-            print(f"Data received: {data}")
             return data
         except serial.SerialException as e:
-            print(f"Failed to read data: {e}")
             return None
     else:
         print("Serial connection is not open.")

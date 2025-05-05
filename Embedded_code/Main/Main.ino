@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "MotorControl.h"
 #include "MPU6050_PID_YPR.h"
+#include "DataReceiver.h"
 
 // --- Hardware and configuration parameters ---
 const int MOTOR_PUL_PINS[] = {3, 4, 5};
@@ -20,14 +21,30 @@ float ypr[3];
 float move_d[2];
 
 // PID config
-double pitchSetpoint = 0;
-double rollSetpoint = 0; 
-double max_angle = 90.0f * PI / 180.0f; // Angle in rad
-double pitchOutput, rollOutput;
-double Kp = 10000, Ki = 0, Kd = 0;
+float pitchSetpoint = 0;
+float rollSetpoint = 0; 
+float max_angle = 90.0f * (PI / 180.0f); // Angle in rad
+float pitchOutput, rollOutput;
+float Kp = 10000, Ki = 0, Kd = 0;
+
+// multithreading config
+#define CORE_0 0
+#define CORE_1 1
 
 // Temp Functions
+float mapFloat(float x, float in_min, float in_max, float out_min, float out_max) {
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
 
+// Multithreading Tasks
+void TaskReceive(void *pvParameters) {
+  receiveLoop();
+}
+
+void TaskMotorControl(void *pvParameters) {
+  // Do pid stuff
+  // Update motors 
+}
 
 // Main Functions
 void setup() {
@@ -35,6 +52,7 @@ void setup() {
   pinMode(LED_GREEN, OUTPUT);
   pinMode(LED_BLUE, OUTPUT);
 
+  // Led -> Green
   digitalWrite(LED_RED, LOW);
   digitalWrite(LED_GREEN, HIGH);
   digitalWrite(LED_BLUE, HIGH);
@@ -46,32 +64,31 @@ void setup() {
 
   setup_MPU6050();
 
+  // Register Data Receiver Values
+  // registerAdress(*kp, "kp_value")
+
+  xTaskCreatePinnedToCore(
+    TaskReceive, "Task Receive", // A name just for humans
+    2048, // The stack size can be checked by calling `uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);`
+    NULL, // Task parameter which can modify the task behavior. This must be passed as pointer to void.
+    1, // Priority
+    NULL, // Task handle is not used here - simply pass NULL
+    CORE_0  // Core on which the task will run
+  );
+
+  xTaskCreatePinnedToCore(
+    TaskMotorControl, "Task Motor Control", // A name just for humans
+    2048, // The stack size can be checked by calling `uxHighWaterMark = uxTaskGetStackHighWaterMark(NULL);`
+    NULL, // Task parameter which can modify the task behavior. This must be passed as pointer to void.
+    1, // Priority
+    NULL, // Task handle is not used here - simply pass NULL
+    CORE_1  // Core on which the task will run
+  );
+
+  // Led -> red
   digitalWrite(LED_RED, HIGH);
-  digitalWrite(LED_GREEN, HIGH);
+  digitalWrite(LED_GREEN, LOW);
   digitalWrite(LED_BLUE, HIGH);
 }
 
-void loop() {
-  bool b_newMpuData = readout_MPU6050(ypr);
-  
-  // P only
-  double pitchError = pitchSetpoint - ypr[1];
-  double rollError = rollSetpoint - ypr[2];
-
-  pitchOutput = map(-1.3f, max_angle, 1.3f, -1.0f, 1.0f);
-  rollOutput = map(-max_angle, max_angle, rollError, -1.0f, 1.0f);
-
-  double resultspeed = (fabs(rollOutput) + fabs(pitchOutput))/2;
-  double magnitude = sqrt((pitchOutput * pitchOutput )+ (rollOutput*rollOutput));
-  Serial.print("y: ");
-  Serial.print(pitchOutput);
-  Serial.print("p: ");
-  Serial.print(pitchOutput);
-  Serial.print("r: ");
-  Serial.print(pitchOutput);
-
-  Serial.print("pitchOutput: ");
-  Serial.print(pitchOutput);
-  Serial.print(" -- rollOutput: ");
-  Serial.println(rollOutput);
-}
+void loop() { }
