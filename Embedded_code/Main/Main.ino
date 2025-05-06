@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include "MotorControl.h"
-#include "MPU6050_PID_YPR.h"
+#include "MPU6050_YPR.h"
 #include "DataReceiver.h"
 
 // --- Hardware and configuration parameters ---
@@ -83,7 +83,7 @@ void setup() {
     pinMode(MOTOR_DIR_PINS[i], OUTPUT);
   }
 
-  setup_MPU6050();
+  setup_MPU6050(false);
 
   // Register Data Receiver Values
   registerAdress(&mode, "mode");
