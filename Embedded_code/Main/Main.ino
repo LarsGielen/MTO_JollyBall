@@ -31,10 +31,8 @@ float Kp = 10000, Ki = 0, Kd = 0;
 #define CORE_0 0
 #define CORE_1 1
 
-// Temp Functions
-float mapFloat(float x, float in_min, float in_max, float out_min, float out_max) {
-  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
-}
+// mode config
+float mode = 0;
 
 // Multithreading Tasks
 void TaskReceive(void *pvParameters) {
@@ -42,8 +40,31 @@ void TaskReceive(void *pvParameters) {
 }
 
 void TaskMotorControl(void *pvParameters) {
-  // Do pid stuff
-  // Update motors 
+  if (mode == 0) {
+    digitalWrite(LED_RED, LOW);
+    digitalWrite(LED_GREEN, HIGH);
+    digitalWrite(LED_BLUE, HIGH);
+    return;
+  }
+
+  if (mode == 1) {
+    digitalWrite(LED_RED, HIGH);
+    digitalWrite(LED_GREEN, LOW);
+    digitalWrite(LED_BLUE, HIGH);
+    return;
+  }
+
+  if (mode == 2) {
+    digitalWrite(LED_RED, HIGH);
+    digitalWrite(LED_GREEN, HIGH);
+    digitalWrite(LED_BLUE, LOW);
+  }
+
+  delay(500);
+  digitalWrite(LED_RED, HIGH);
+  digitalWrite(LED_GREEN, HIGH);
+  digitalWrite(LED_BLUE, HIGH);
+  delay(500);
 }
 
 // Main Functions
@@ -65,7 +86,7 @@ void setup() {
   setup_MPU6050();
 
   // Register Data Receiver Values
-  // registerAdress(*kp, "kp_value")
+  registerAdress(&mode, "mode");
 
   xTaskCreatePinnedToCore(
     TaskReceive, "Task Receive", // A name just for humans

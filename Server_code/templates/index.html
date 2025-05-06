@@ -94,6 +94,7 @@
                 const output = document.getElementById(outputId);
                 output.textContent = defaultValue;
             }
+
             // Trigger live update after reset
             const data = { [input.name]: input.value };
             sendLiveUpdate(data);
@@ -109,20 +110,30 @@
         }
 
         async function sendLiveUpdate(data) {
-            if (!liveUpdateActive) return; // Prevent sending updates if live update is toggled off
-            try {
-                const response = await fetch('/update', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(data),
-                });
-                const result = await response.json();
-                console.log('Server response:', result);
-            } catch (error) {
-                console.error('Error sending live update:', error);
+            if (sendLiveUpdate.timeout) {
+                clearTimeout(sendLiveUpdate.timeout);
             }
+
+            sendLiveUpdate.timeout = setTimeout(async () => {
+                if (!liveUpdateActive) return; // Prevent sending updates if live update is toggled off
+                try {
+                    if (typeof data === 'string') {
+                        data = { mode: data === 'manual' ? 0 : data === 'pid' ? 1 : data === 'single-wheel' ? 2 : data };
+                    }
+
+                    const response = await fetch('/update', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(data),
+                    });
+                    const result = await response.json();
+                    console.log('Server response:', result);
+                } catch (error) {
+                    console.error('Error sending live update:', error);
+                }
+            }, 5);
         }
     </script>
     <style>
