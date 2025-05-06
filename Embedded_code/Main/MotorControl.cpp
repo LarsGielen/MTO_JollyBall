@@ -49,16 +49,14 @@ void rotateWheel(float motorspeed, bool dir, int wheelIndex) {
 void move(const float moveDirection[2], float speedPercent) {
   float wheelVel[3];
   direction2wheelVelocity(moveDirection, wheelVel);
-
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < 3; i++) 
+  {
     lastWheelVel[i] = wheelVel[i];
     bool dir = (wheelVel[i] >= 0);  
     float speed = fabs(wheelVel[i]) * speedPercent; 
     rotateWheel(speed, dir, i);
   }
 }
-
-
 
 void printMotorState() {
   Serial.println("Motor Status:");

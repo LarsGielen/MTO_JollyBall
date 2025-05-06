@@ -31,6 +31,7 @@ int checksignage(float number)
 float mapFloat(float x, float in_min, float in_max, float out_min, float out_max){
   return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
+
 void setup() {
   // Initialize motor pins as outputs.
   for (int i = 0; i < 3; i++) 
@@ -56,12 +57,18 @@ void loop()
   pitchError = pitchSetpoint - ypr[1];
   rollError = rollSetpoint - ypr[2];
 
+  Serial.println(max_angle);
+  
   pitchOutput = mapFloat(pitchError, -max_angle, max_angle, -1.0f, 1.0f);
   rollOutput = mapFloat(rollError, -max_angle, max_angle, -1.0f, 1.0f);
-  
+  Serial.print(pitchOutput);
+  Serial.print("\t"); 
+  Serial.print(rollOutput);
+  Serial.print("\t"); 
   resultspeed = (fabs(rollOutput) + fabs(pitchOutput))/2.0f;
   resultspeed = constrain(resultspeed, 0.0f, 1.0f);
   magnitude = sqrt((pitchOutput * pitchOutput )+ (rollOutput*rollOutput));
+  
   
   Serial.print("Resultspeed:");
   Serial.print(resultspeed);
@@ -82,13 +89,12 @@ void loop()
   
   move_d[0] = (float)(pitchOutput / magnitude);
   move_d[1] = (float)(rollOutput / magnitude);
-  
+  //move_d[0] = 1;
+  //move_d[1] = 0;
   Serial.print(", move_d0: ");
   Serial.print(move_d[0]);
   Serial.print(", move_d1: ");
   Serial.println(move_d[1]);  
-  //move_d[0] = 1;
-  //move_d[1] = 0;
-  
+
   move(move_d, resultspeed);
 }
