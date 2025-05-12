@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Control Panel</title>
     <script>
-        let liveUpdateActive = false;
+        let liveUpdateActive = true;
 
         function toggleLiveUpdate() {
             liveUpdateActive = !liveUpdateActive;
@@ -15,7 +15,10 @@
         function handleInputChangeLive(event) {
             if (!liveUpdateActive) return;
             const input = event.target;
-            const data = { [input.name]: input.value };
+            var data = { [input.name]: input.value };
+            if (input.name === 'mode') {
+                data = { mode: input.value === 'none' ? -1.0 : input.value === 'pid' ? 0.0 : input.value === 'manual' ? 1.0 : input.value === 'single-wheel' ? 2.0 : input.value };
+            }
             sendLiveUpdate(data);
         }
 
@@ -54,45 +57,77 @@
 
             // Update x and y components
             const xComponent = Math.cos(angle).toFixed(2);
-            const yComponent = Math.sin(angle).toFixed(2);
+            const yComponent = -Math.sin(angle).toFixed(2);
             document.getElementById('direction-x').value = xComponent;
             document.getElementById('direction-y').value = yComponent;
 
             // Trigger live update for direction
-            sendLiveUpdate({ direction_x: xComponent, direction_y: yComponent });
+            sendLiveUpdate([{ direction_x: xComponent}, {direction_y: yComponent }]);
+        }
+
+        function get_default_value(inputId) {
+            switch (inputId) {
+                case 'min-delay':
+                    return 700;
+                case 'max-delay':
+                    return 20000;
+                case 'mode':
+                    return ('none');
+                case 'speed':
+                    return 0.0;
+                case 'direction-x':
+                    return 0.0;
+                case 'direction-y':
+                    return 1.0;
+                case 'kp':
+                    return 5.0;
+                case 'ki':
+                    return 0.0;
+                case 'kd':
+                    return 0.0;
+                case 'pitch_setpoint':
+                    return 0.0;
+                case 'roll_setpoint':
+                    return 0.0;
+                default:
+                    return null;
+            }
         }
 
         function resetToDefaults() {
-            document.getElementById('min-delay').value = 10;
-            document.getElementById('max-delay').value = 100;
-            document.getElementById('mode').value = 'manual';
-            updateFields();
-
-            document.getElementById('speed').value = 0;
-            document.getElementById('speed-value').textContent = 0;
-
-            document.getElementById('direction-x').value = 0;
-            document.getElementById('direction-y').value = 0;
+            document.getElementById('min-delay').value = get_default_value('min-delay');
+            document.getElementById('max-delay').value = get_default_value('max-delay');
+            document.getElementById('mode').value = get_default_value('mode');
+            
+            document.getElementById('speed').value = get_default_value('speed');
+            document.getElementById('speed-value').textContent = get_default_value('speed');
+            
+            document.getElementById('direction-x').value = get_default_value('direction-x');
+            document.getElementById('direction-y').value = get_default_value('direction-y');
             document.getElementById('direction-arrow').style.transform = 'rotate(-90deg)';
+            
+            document.getElementById('pid_max_angle').value = get_default_value('kp');
+            document.getElementById('pid_ki').value = get_default_value('ki');
+            document.getElementById('pid_kd').value = get_default_value('kd');
 
-            document.getElementById('kp').value = 1.0;
-            document.getElementById('ki').value = 0.5;
-            document.getElementById('kd').value = 0.1;
-
-            document.getElementById('wheel1-speed').value = 0;
-            document.getElementById('wheel1-speed-value').textContent = 0;
-            document.getElementById('wheel2-speed').value = 0;
-            document.getElementById('wheel2-speed-value').textContent = 0;
-            document.getElementById('wheel3-speed').value = 0;
-            document.getElementById('wheel3-speed-value').textContent = 0;
+            document.getElementById('pitch_setpoint').value = get_default_value('pitch_setpoint');
+            document.getElementById('roll_setpoint').value = get_default_value('roll_setpoint');
+            
+            document.getElementById('wheel1-speed').value = get_default_value('speed');
+            document.getElementById('wheel2-speed').value = get_default_value('speed');
+            document.getElementById('wheel3-speed').value = get_default_value('speed');
+            document.getElementById('wheel1-speed-value').textContent = get_default_value('speed');
+            document.getElementById('wheel2-speed-value').textContent = get_default_value('speed');
+            document.getElementById('wheel3-speed-value').textContent = get_default_value('speed');
+            updateFields();
         }
 
-        function resetInput(inputId, defaultValue, outputId = null) {
+        function resetInput(key, inputId, outputId = null) {
             const input = document.getElementById(inputId);
-            input.value = defaultValue;
+            input.value = get_default_value(key);
             if (outputId) {
                 const output = document.getElementById(outputId);
-                output.textContent = defaultValue;
+                output.textContent = get_default_value(key);;
             }
 
             // Trigger live update after reset
@@ -103,7 +138,7 @@
             if (inputId === 'direction-x' || inputId === 'direction-y') {
                 const x = parseFloat(document.getElementById('direction-x').value) || 0;
                 const y = parseFloat(document.getElementById('direction-y').value) || 0;
-                const angle = Math.atan2(y, x);
+                const angle = Math.atan2(-y, x);
                 const arrow = document.getElementById('direction-arrow');
                 arrow.style.transform = `rotate(${angle + Math.PI / 2}rad)`;
             }
@@ -117,10 +152,6 @@
             sendLiveUpdate.timeout = setTimeout(async () => {
                 if (!liveUpdateActive) return; // Prevent sending updates if live update is toggled off
                 try {
-                    if (typeof data === 'string') {
-                        data = { mode: data === 'manual' ? 0 : data === 'pid' ? 1 : data === 'single-wheel' ? 2 : data };
-                    }
-
                     const response = await fetch('/update', {
                         method: 'POST',
                         headers: {
@@ -129,11 +160,36 @@
                         body: JSON.stringify(data),
                     });
                     const result = await response.json();
-                    console.log('Server response:', result);
+                    console.log(result.message);
                 } catch (error) {
                     console.error('Error sending live update:', error);
                 }
-            }, 5);
+            }, 100);
+        }
+
+        async function sendAllToArduino() {
+            const formData = new FormData(document.querySelector('form'));
+            const data = [];
+            formData.forEach((value, key) => {
+                if (key === 'mode') {
+                    value = value === 'none' ? -1.0 : value === 'pid' ? 0.0 : value === 'manual' ? 1.0 : value === 'single-wheel' ? 2.0 : value;
+                }
+                data.push({[key]: value });
+            });
+
+            try {
+                const response = await fetch('/update', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data),
+                });
+                const result = await response.json();
+                console.log(result.message);
+            } catch (error) {
+                console.error('Error sending live update:', error);
+            }
         }
     </script>
     <style>
@@ -159,39 +215,40 @@
 <body>
     <h1>Control Panel</h1>
 
+    <label for="com-port">Select COM Port:</label>
+    <select id="com-port" name="com_port" required>
+        <option value="" disabled selected>Scanning...</option>
+    </select>
+    <button type="button" onclick="connectToArduino()">Connect</button>
+    <button type="button" onclick="sendAllToArduino()">Send All</button><br><br>
+
     <label for="live-update-toggle">Activate Live Update:</label>
     <button type="button" id="live-update-toggle" onclick="toggleLiveUpdate()">Toggle</button>
-    <span id="live-update-status">OFF</span><br><br>
+    <span id="live-update-status">ON</span><br><br>
 
     <form action="javascript:void(0);" oninput="handleInputChangeLive(event)">
         <label for="min-delay">Minimum Delay:</label>
         <input type="number" id="min-delay" name="min_delay" value="10" required>
-        <button type="button" onclick="resetInput('min-delay', 10)">Reset</button><br><br>
+        <button type="button" onclick="resetInput('min-delay', 'min-delay')">Reset</button><br><br>
 
         <label for="max-delay">Maximum Delay:</label>
         <input type="number" id="max-delay" name="max_delay" value="100" required>
-        <button type="button" onclick="resetInput('max-delay', 100)">Reset</button><br><br>
+        <button type="button" onclick="resetInput('max-delay', 'max-delay')">Reset</button><br><br>
 
         <label for="mode">Mode:</label>
         <select id="mode" name="mode" onchange="updateFields()" required>
-            <option value="manual">Manual</option>
+            <option value="none">NONE</option>
             <option value="pid">PID</option>
+            <option value="manual">Manual</option>
             <option value="single-wheel">Single Wheel</option>
         </select>
-        <button type="button" onclick="resetInput('mode', 'manual'); updateFields()">Reset</button><br><br>
-
-        <label for="com-port">Select COM Port:</label>
-        <select id="com-port" name="com_port" required>
-            <option value="" disabled selected>Scanning...</option>
-        </select>
-        <button type="button" onclick="resetInput('com-port', '')">Reset</button>
-        <button type="button" onclick="connectToArduino()">Connect</button><br><br>
+        <button type="button" onclick="resetInput('mode', 'mode'); updateFields()">Reset</button><br><br>
 
         <div id="manual-fields" style="display: none;">
             <label for="speed">Speed Percentage:</label>
-            <input type="range" id="speed" name="speed" min="-100" max="100" oninput="updateSliderValue('speed', 'speed-value')">
+            <input type="range" id="speed" name="speed" min="0" max="1" step="0.0001" oninput="updateSliderValue('speed', 'speed-value')">
             <span id="speed-value">0</span>
-            <button type="button" onclick="resetInput('speed', 0, 'speed-value')">Reset</button><br><br>
+            <button type="button" onclick="resetInput('speed', 'speed', 'speed-value')">Reset</button><br><br>
 
             <label for="direction">Direction:</label>
             <div id="direction-knob" onmousedown="document.addEventListener('mousemove', updateKnob)" onmouseup="document.removeEventListener('mousemove', updateKnob)">
@@ -199,52 +256,92 @@
             </div>
             <label for="direction-x">X Component:</label>
             <input type="text" id="direction-x" name="direction_x" value="0" readonly oninput="updateArrowFromComponents()">
-            <button type="button" onclick="resetInput('direction-x', 0); updateArrowFromComponents()">Reset</button><br><br>
+            <button type="button" onclick="resetInput('direction-x', 'direction-x'); updateArrowFromComponents()">Reset</button><br><br>
             <label for="direction-y">Y Component:</label>
             <input type="text" id="direction-y" name="direction_y" value="0" readonly oninput="updateArrowFromComponents()">
-            <button type="button" onclick="resetInput('direction-y', 0); updateArrowFromComponents()">Reset</button><br><br>
+            <button type="button" onclick="resetInput('direction-y', 'direction-y'); updateArrowFromComponents()">Reset</button><br><br>
         </div>
 
         <div id="pid-fields" style="display: none;">
-            <label for="kp">Kp:</label>
-            <input type="number" id="kp" name="kp" step="0.01" value="1.0">
-            <button type="button" onclick="resetInput('kp', 1.0)">Reset</button><br><br>
+            <label for="pid_max_angle">Max angle:</label>
+            <input type="number" id="pid_max_angle" name="pid_max_angle" step="0.01" value="1.0">
+            <button type="button" onclick="resetInput('kp', 'pid_max_angle')">Reset</button><br><br>
 
-            <label for="ki">Ki:</label>
-            <input type="number" id="ki" name="ki" step="0.01" value="0.5">
-            <button type="button" onclick="resetInput('ki', 0.5)">Reset</button><br><br>
+            <label for="pid_ki">Ki:</label>
+            <input type="number" id="pid_ki" name="pid_ki" step="0.01" value="0.5">
+            <button type="button" onclick="resetInput('ki', 'pid_ki')">Reset</button><br><br>
 
-            <label for="kd">Kd:</label>
-            <input type="number" id="kd" name="kd" step="0.01" value="0.1">
-            <button type="button" onclick="resetInput('kd', 0.1)">Reset</button><br><br>
+            <label for="pid_kd">Kd:</label>
+            <input type="number" id="pid_kd" name="pid_kd" step="0.01" value="0.1">
+            <button type="button" onclick="resetInput('kd', 'pid_kd')">Reset</button><br><br>
+
+            <label for="pitch_setpoint">Pitch setpoint:</label>
+            <input type="number" id="pitch_setpoint" name="pitch_setpoint" step="0.01" value="0.1">
+            <button type="button" onclick="resetInput('pitch_setpoint', 'pitch_setpoint')">Reset</button><br><br>
+
+            <label for="roll_setpoint">Roll setpoint:</label>
+            <input type="number" id="roll_setpoint" name="roll_setpoint" step="0.01" value="0.1">
+            <button type="button" onclick="resetInput('roll_setpoint', 'roll_setpoint')">Reset</button><br><br>
         </div>
 
         <div id="single-wheel-fields" style="display: none;">
             <label for="wheel1-speed">Wheel 1 Speed Percentage:</label>
-            <input type="range" id="wheel1-speed" name="wheel1_speed" min="-100" max="100" oninput="updateSliderValue('wheel1-speed', 'wheel1-speed-value')">
+            <input type="range" id="wheel1-speed" name="wheel1_speed" min="-1" max="1" step="0.0001" oninput="updateSliderValue('wheel1-speed', 'wheel1-speed-value')">
             <span id="wheel1-speed-value">0</span>
-            <button type="button" onclick="resetInput('wheel1-speed', 0, 'wheel1-speed-value')">Reset</button><br><br>
+            <button type="button" onclick="resetInput('speed', 'wheel1-speed','wheel1-speed-value')">Reset</button><br><br>
 
             <label for="wheel2-speed">Wheel 2 Speed Percentage:</label>
-            <input type="range" id="wheel2-speed" name="wheel2_speed" min="-100" max="100" oninput="updateSliderValue('wheel2-speed', 'wheel2-speed-value')">
+            <input type="range" id="wheel2-speed" name="wheel2_speed" min="-1" max="1" step="0.0001" oninput="updateSliderValue('wheel2-speed', 'wheel2-speed-value')">
             <span id="wheel2-speed-value">0</span>
-            <button type="button" onclick="resetInput('wheel2-speed', 0, 'wheel2-speed-value')">Reset</button><br><br>
+            <button type="button" onclick="resetInput('speed', 'wheel2-speed','wheel2-speed-value')">Reset</button><br><br>
 
             <label for="wheel3-speed">Wheel 3 Speed Percentage:</label>
-            <input type="range" id="wheel3-speed" name="wheel3_speed" min="-100" max="100" oninput="updateSliderValue('wheel3-speed', 'wheel3-speed-value')">
+            <input type="range" id="wheel3-speed" name="wheel3_speed" min="-1" max="1" step="0.0001" oninput="updateSliderValue('wheel3-speed', 'wheel3-speed-value')">
             <span id="wheel3-speed-value">0</span>
-            <button type="button" onclick="resetInput('wheel3-speed', 0, 'wheel3-speed-value')">Reset</button><br><br>
+            <button type="button" onclick="resetInput('speed', 'wheel3-speed','wheel3-speed-value')">Reset</button><br><br>
         </div>
-    </form>
 
-    <script>
+        <label for="serial-data">Serial Data:</label>
+        <textarea id="serial-data" readonly style="width: 100%; height: 100px; overflow-y: scroll;"></textarea>
+        <button type="button" onclick="clearSerialDataUI()">Clear</button>
+        <label for="auto-scroll-toggle">Auto Scroll:</label>
+        <button type="button" id="auto-scroll-toggle" onclick="toggleAutoScroll()">ON</button>
+        </form>
+
+        <script>
+        let autoScrollEnabled = true;
+
+        function toggleAutoScroll() {
+            autoScrollEnabled = !autoScrollEnabled;
+            const toggleButton = document.getElementById('auto-scroll-toggle');
+            toggleButton.textContent = autoScrollEnabled ? 'ON' : 'OFF';
+        }
+
+        function scrollToBottom() {
+            if (autoScrollEnabled) {
+                const serialData = document.getElementById('serial-data');
+                serialData.scrollTop = serialData.scrollHeight;
+            }
+        }
+
+        // Update scroll position every second if auto-scroll is enabled
+        setInterval(scrollToBottom, 1000);
+
+        function clearSerialDataUI() {
+            document.getElementById('serial-data').value = '';
+            fetch('/clear-serial-data', { method: 'POST' })
+                .then(response => response.json())
+                .then(result => console.log(result.message))
+                .catch(error => console.error('Error clearing serial data:', error));
+        }
+
         async function fetchComPorts() {
             try {
                 const response = await fetch('/scan-com-ports');
                 const ports = await response.json();
                 const comPortSelect = document.getElementById('com-port');
                 comPortSelect.innerHTML = ''; // Clear existing options
-                ports.forEach(port => {
+                ports.reverse().forEach(port => {
                     const option = document.createElement('option');
                     option.value = port;
                     option.textContent = port;
@@ -276,12 +373,24 @@
                     body: JSON.stringify({ com_port: comPort }),
                 });
                 const result = await response.json();
-                alert(result.message);
             } catch (error) {
                 console.error('Error connecting to Arduino:', error);
                 alert('Failed to connect to Arduino.');
             }
         }
+
+        async function fetchSerialData() {
+            try {
+                const response = await fetch('/serial-data');
+                const result = await response.json();
+                document.getElementById('serial-data').value = result.data;
+            } catch (error) {
+                console.error('Error fetching serial data:', error);
+            }
+        }
+
+        // Fetch serial data every second
+        setInterval(fetchSerialData, 1000);
     </script>
 </body>
 </html>

@@ -1,6 +1,7 @@
 import serial
 
 connection = None
+serial_data = ""
 
 def get_open_connection():
     """
@@ -12,7 +13,6 @@ def get_open_connection():
     if connection and connection.is_open:
         return connection
     else:
-        print("No open serial connection.")
         return None
 
 def open_serial_connection(com_port, baud_rate):
@@ -54,7 +54,8 @@ def send_data(ser, data):
     """
     if ser and ser.is_open:
         try:
-            ser.write(data.encode())
+            ser.write(data.encode() + "\n".encode())
+            print(f"Sent data: {data}")
         except serial.SerialException as e:
             print(f"Failed to send data: {e}")
     else:
@@ -67,12 +68,26 @@ def read_data(ser):
     :param ser: The serial.Serial object.
     :return: The data read from the Arduino (string).
     """
+    global serial_data
     if ser and ser.is_open:
         try:
-            data = ser.readline().decode().strip()
-            return data
+            lines = []
+            while ser.in_waiting > 0:  # Check if there is data available to read
+                line = ser.readline().decode().strip()
+                if line:
+                    lines.append(line)
+                    serial_data += "\n" + line
+            return lines, serial_data
         except serial.SerialException as e:
-            return None
+            print(f"Failed to read data: {e}")
+            return None, serial_data
     else:
         print("Serial connection is not open.")
-        return None
+        return None, serial_data
+    
+def clear_serial_data():
+    """
+    Clears the stored serial data.
+    """
+    global serial_data
+    serial_data = ""

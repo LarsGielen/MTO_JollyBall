@@ -1,76 +1,78 @@
 #include "MotorControl.h"
+#include "utils.h"
 
-float lastWheelVel[3] = {0, 0, 0};
+static float nextStepTime[3] = {0.0f, 0.0f, 0.0f};
+static bool nextStepflag[3] = {false, false, false};
 
-int wheelDelay(float percentSpeed) {
-  const int MIN_DELAY = 2000;   // Minimum step delay (fastest speed) 2000
-  const int MAX_DELAY = 7500; // Maximum step delay (slowest speed)  7500
-
-  percentSpeed = constrain(percentSpeed, 0.0f, 1.0f);
-  //Serial.println(MIN_DELAY + (MAX_DELAY - MIN_DELAY) * (1.0f-percentSpeed));
-  return MIN_DELAY + (MAX_DELAY - MIN_DELAY) * (1.0f-percentSpeed);
+float wheelDelayMicros(float speedRatio) {
+  speedRatio = constrain(speedRatio, 0.0f, 1.0f);
+  // invert speedRatio so faster speed means shorter delay
+  return motor_delay_min + (motor_delay_max - motor_delay_min) * (1.0f - speedRatio);
 }
 
-void direction2wheelVelocity(const float moveDirection[2], float wheelVel[3]) {
-  float phi = atan2(moveDirection[1], moveDirection[0]);
-  const float wheelAngles[3] = { 0.0f, PI * 2/3, -PI * 2/3 };
+// https://modwg.co.uk/wp-content/uploads/2015/06/OmniRoller-Holonomic-Drive-Tutorial.pdf
+void computeWheelSpeeds(float x, float y, float w, float speed, float& s1, float& s2, float& s3) {
+  float theta1 = 0;          //   0 degrees
+  float theta2 = 2 * PI / 3; // 120 degrees
+  float theta3 = 4 * PI / 3; // 240 degrees
 
-  float raw[3];
-  float maxVal = 0;
+  // Calculate wheel speeds
+  s1 = (-x * sin(theta1) + y * cos(theta1) + w);
+  s2 = (-x * sin(theta2) + y * cos(theta2) + w);
+  s3 = (-x * sin(theta3) + y * cos(theta3) + w);
 
-  for (int i = 0; i < 3; i++) {
-    raw[i] = sin(wheelAngles[i] - phi);
-    if (fabs(raw[i]) > maxVal) 
-      maxVal = fabs(raw[i]);
+  // Max normalization
+  float maxVal = max(max(fabs(s1), fabs(s2)), fabs(s3));
+  if (maxVal <= 1e-9f) {
+    s1 = 0.0f;
+    s2 = 0.0f;
+    s3 = 0.0f;
   }
-
-  if (maxVal < 1e-6) {
-    for (int i = 0; i < 3; i++) 
-      wheelVel[i] = 0;
-  } 
   else {
-    for (int i = 0; i < 3; i++) 
-      wheelVel[i] = raw[i] / maxVal;
+    s1 /= maxVal;
+    s2 /= maxVal;
+    s3 /= maxVal;
   }
+
+  s1 *= speed;
+  s2 *= speed;
+  s3 *= speed;
 }
 
-void rotateWheel(float motorspeed, bool dir, int wheelIndex) {
-  if(motorspeed <= 0.0f) return;
-  float delayVal = wheelDelay(motorspeed);
+void rotateWheel(float speedRatio, bool dir, int wheelIndex) {
+  if (speedRatio <= 0.0f) return;
+  float delayUs = wheelDelayMicros(speedRatio);
+  unsigned long now = micros();
+
+  if (nextStepTime[wheelIndex] == 0.0f) {
+    nextStepTime[wheelIndex] = now + delayUs;
+  }
   
-  if (micros() - motor_timers[wheelIndex] >= (delayVal / 2.0f)) {
+  if ((float)now >= nextStepTime[wheelIndex]) {
+    // toggle step
     digitalWrite(MOTOR_DIR_PINS[wheelIndex], dir);
-    digitalWrite(MOTOR_PUL_PINS[wheelIndex], motor_flags[wheelIndex]);
-    motor_timers[wheelIndex] = micros();
-    motor_flags[wheelIndex] = !motor_flags[wheelIndex];
+    digitalWrite(MOTOR_PUL_PINS[wheelIndex], nextStepflag[wheelIndex]);
+    nextStepflag[wheelIndex] = !nextStepflag[wheelIndex];
+
+    // schedule next step
+    nextStepTime[wheelIndex] += delayUs;
+
+    // avoid drift: if behind, catch up
+    if (nextStepTime[wheelIndex] < now) {
+      nextStepTime[wheelIndex] = now + delayUs;
+    }
   }
 }
 
 void move(const float moveDirection[2], float speedPercent) {
-  float wheelVel[3];
-  direction2wheelVelocity(moveDirection, wheelVel);
-
-  for (int i = 0; i < 3; i++) {
-    lastWheelVel[i] = wheelVel[i];
-    bool dir = (wheelVel[i] >= 0);  
-    float speed = fabs(wheelVel[i]) * speedPercent; 
-    rotateWheel(speed, dir, i);
-  }
+  move(moveDirection[0], moveDirection[1], speedPercent);
 }
 
+void move(float dir_x, float dir_y, float speedPercent) {
+  float s1, s2, s3;
+  computeWheelSpeeds(dir_x, dir_y, 0.0f, speedPercent, s1, s2, s3);
 
-
-void printMotorState() {
-  Serial.println("Motor Status:");
-  for (int i = 0; i < 3; i++) {
-    Serial.print("Motor ");
-    Serial.print(i);
-    Serial.print(": Timer = ");
-    Serial.print(motor_timers[i]);
-    Serial.print(" | Flag = ");
-    Serial.print(motor_flags[i] ? "HIGH" : "LOW");
-    Serial.print(" | Speed = ");
-    Serial.print(lastWheelVel[i], 4);
-    Serial.println(" m/s");
-  }
+  rotateWheel(fabs(s1), s1 >= 0, 0);
+  rotateWheel(fabs(s2), s2 >= 0, 1);
+  rotateWheel(fabs(s3), s3 >= 0, 2);
 }
