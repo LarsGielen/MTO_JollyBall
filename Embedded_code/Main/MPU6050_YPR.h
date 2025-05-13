@@ -3,13 +3,12 @@
 
 // OFFSETS on flat surface
 
-#define OFFSET_X_ACCEL -2894
-#define OFFSET_Y_ACCEL -869
-#define OFFSET_Z_ACCEL 1620
-#define OFFSET_X_GYRO 62
+#define OFFSET_X_ACCEL -2844
+#define OFFSET_Y_ACCEL -827
+#define OFFSET_Z_ACCEL 1614
+#define OFFSET_X_GYRO 63
 #define OFFSET_Y_GYRO 6
-#define OFFSET_Z_GYRO 4
-
+#define OFFSET_Z_GYRO 1
 
 void setup_MPU6050(bool calibrate);
 bool readout_mpu_ypr(float* ypr);
