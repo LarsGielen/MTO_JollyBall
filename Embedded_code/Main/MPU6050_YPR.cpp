@@ -43,7 +43,6 @@ void setup_MPU6050(bool calibrate)
   Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
 
   Serial.begin(9600);
-  while (!Serial); // wait for Leonardo enumeration, others continue immediately
 
   // initialize device
   Serial.println(F("Initializing I2C devices..."));
